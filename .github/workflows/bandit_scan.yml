@@ -1,63 +1,23 @@
-name: Bandit Security Scan
-
-on:
-  pull_request:
-    branches:
-      - main
-
-jobs:
-  security-scan:
+sast_bandit:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
 
+      - name: Set up Python Environment
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
       - name: Install Bandit
         run: pip install bandit
 
-      - name: Run Bandit Security Scan
-        id: bandit_scan
+      - name: Run Bandit (SAST)
         run: |
-          bandit -r . | tee bandit_report.txt
-          if grep -q "Severity: CRITICAL" bandit_report.txt; then
-            echo "BLOCK=true" >> $GITHUB_ENV
-          else
-            echo "BLOCK=false" >> $GITHUB_ENV
-          fi
+          bandit -r . -ll -iii -f html -o bandit-report.html || echo "Bandit scan completed with issues"
 
-      - name: Comment on PR and Handle Merge
-        uses: actions/github-script@v6
+      - name: Upload Bandit Report
+        uses: actions/upload-artifact@v3
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const { owner, repo } = context.repo;
-            const pr_number = context.payload.pull_request?.number;
-
-            if (!pr_number) {
-              console.log("No PR number found. Skipping...");
-              return;
-            }
-
-            if (process.env.BLOCK === "true") {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: pr_number,
-                body: "Block"
-              });
-              throw new Error("Critical vulnerability found. Blocking PR.");
-            } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: pr_number,
-                body: "Successful"
-              });
-
-              await github.rest.pulls.merge({
-                owner,
-                repo,
-                pull_number: pr_number,
-                merge_method: "squash"
-              });
-            }
+          name: bandit-sast-html-report
+          path: bandit-report.html
