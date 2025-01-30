@@ -13,46 +13,52 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Install Bandit
-        run: pip install bandit jq
+        run: pip install bandit
 
       - name: Run Bandit Security Scan
-        run: bandit -r . -f json -o bandit_report.json || true
-
-      - name: Analyze Bandit Results
-        id: check_vulnerabilities
+        id: bandit_scan
         run: |
-          if jq -e '.results[] | select(.issue_severity=="CRITICAL")' bandit_report.json > /dev/null; then
+          bandit -r . | tee bandit_report.txt
+          if grep -q "Severity: CRITICAL" bandit_report.txt; then
             echo "BLOCK=true" >> $GITHUB_ENV
           else
             echo "BLOCK=false" >> $GITHUB_ENV
           fi
 
-      - name: Comment and Merge PR
+      - name: Comment on PR and Handle Merge
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const pr_number = context.payload.pull_request.number;
+            const pr_number = context.payload.pull_request?.number;
+
+            if (!pr_number) {
+              console.log("No PR number found. Skipping...");
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
 
             if (process.env.BLOCK === "true") {
-              github.issues.createComment({
+              await github.rest.issues.createComment({
+                owner,
+                repo,
                 issue_number: pr_number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
                 body: "Block"
               });
               throw new Error("Critical vulnerability found. Blocking PR.");
             } else {
-              github.issues.createComment({
+              await github.rest.issues.createComment({
+                owner,
+                repo,
                 issue_number: pr_number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
                 body: "Successful"
               });
 
-              github.pulls.merge({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
+              await github.rest.pulls.merge({
+                owner,
+                repo,
                 pull_number: pr_number,
                 merge_method: "squash"
               });
