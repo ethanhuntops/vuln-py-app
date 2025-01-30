@@ -30,15 +30,13 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const { owner, repo } = context.repo;
             const pr_number = context.payload.pull_request?.number;
 
             if (!pr_number) {
               console.log("No PR number found. Skipping...");
               return;
             }
-
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
 
             if (process.env.BLOCK === "true") {
               await github.rest.issues.createComment({
