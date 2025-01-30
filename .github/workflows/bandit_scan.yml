@@ -13,21 +13,19 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Install Bandit
-        run: pip install bandit jq
+        run: pip install bandit
 
       - name: Run Bandit Security Scan
-        run: bandit -r . -f json -o bandit_report.json || true
-
-      - name: Analyze Bandit Results
-        id: check_vulnerabilities
+        id: bandit_scan
         run: |
-          if jq -e '.results[] | select(.issue_severity=="CRITICAL")' bandit_report.json > /dev/null; then
+          bandit -r . | tee bandit_report.txt
+          if grep -q "Severity: CRITICAL" bandit_report.txt; then
             echo "BLOCK=true" >> $GITHUB_ENV
           else
             echo "BLOCK=false" >> $GITHUB_ENV
           fi
 
-      - name: Comment and Merge PR
+      - name: Comment on PR and Handle Merge
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
