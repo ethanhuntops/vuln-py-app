@@ -1,0 +1,46 @@
+name: Bandit Security Scan
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  bandit:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write  # Allow commenting on PRs
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Run Bandit Scan
+        run: bandit -r . -f json -o bandit-report.json || true
+
+      - name: Upload Bandit Report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: bandit-report.json
+
+      - name: Check for Critical Vulnerabilities
+        id: check_vulns
+        run: |
+          CRITICAL_ISSUES=$(jq '[.results[] | select(.issue_severity=="HIGH")] | length' bandit-report.json)
+          if [ "$CRITICAL_ISSUES" -gt 0 ]; then
+            echo "❌ Critical vulnerabilities found! Blocking PR."
+            echo "block=true" >> $GITHUB_ENV
+            exit 1
+          else
+            echo "✅ No critical vulnerabilities found."
+            echo "block=false" >> $GITHUB_ENV
+          fi
+
+      - name: Comment on PR if Blocked
+        if: env.block == 'true'
+        uses: mshick/add-pr-comment@v2
+        with:
+          message: "❌ **Security Scan Failed:** Critical vulnerabilities detected! **Block** 🚨"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
